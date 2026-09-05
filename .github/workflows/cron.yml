@@ -1,0 +1,38 @@
+name: Shopify 5-Min Tracker
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch: # Allows manual trigger from the Actions tab
+
+jobs:
+  track:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Needed to push the tracker.db back to the repo
+      
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run Tracker Bot
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python cron_runner.py
+
+      - name: Commit and push Database updates
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add tracker.db
+          # Only commit if there are changes to avoid empty commit errors
+          git diff --quiet && git diff --staged --quiet || (git commit -m "bot: auto-update inventory state" && git push)
