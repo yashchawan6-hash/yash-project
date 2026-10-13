@@ -26,6 +26,7 @@ def harvest_storefront_token(domain):
     fallbacks = {
         'dulhanjewels.com': '2a836df2b82846963a38b5ef407d6018',
         'kanshijewels.com': '9a3eed2b46c608cf9357de80d28fac47',
+        'muskanjewel.com': 'ece39a0ad683230d3ffd3737c38c3145',
         'daivik.in': '2d20ed5b79d467bbbc827f43162d6f26'
     }
     clean_domain = domain.lower().replace('www.', '')
@@ -82,9 +83,10 @@ def fetch_current_inventory(domain, token):
     while has_next:
         payload = {'query': query, 'variables': {"cursor": cursor}}
         data = post_graphql_query(url, headers, payload)
-        if not data: break
+        if not data or not isinstance(data, dict): break
             
-        products_conn = data.get('data', {}).get('products', {})
+        data_obj = data.get('data') or {}
+        products_conn = data_obj.get('products') or {}
         if not products_conn: break
             
         for edge in products_conn.get('edges', []):
@@ -142,13 +144,17 @@ def fetch_current_inventory(domain, token):
         lines = [{'merchandiseId': v['global_id'], 'quantity': 9999} for v in batch]
         
         data = post_graphql_query(url, headers, {'query': mutation, 'variables': {"input": {"lines": lines}}})
-        if data:
-            cart_data = data.get('data', {}).get('cartCreate', {}).get('cart', {})
+        if data and isinstance(data, dict):
+            data_obj = data.get('data') or {}
+            cart_create = data_obj.get('cartCreate') or {}
+            cart_data = cart_create.get('cart') or {}
             if cart_data:
                 quantities = {}
                 for edge in cart_data.get('lines', {}).get('edges', []):
-                    n = edge['node']
-                    quantities[n['merchandise']['id']] = n['quantity']
+                    n = edge.get('node') or {}
+                    merch = n.get('merchandise') or {}
+                    if merch.get('id'):
+                        quantities[merch['id']] = n.get('quantity', 0)
                 for v in batch:
                     stock_results[v['variant_id']] = quantities.get(v['global_id'], 0)
             else:
