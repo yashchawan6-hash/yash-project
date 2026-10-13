@@ -87,44 +87,51 @@ def check_telegram_commands(bot_token, chat_id):
         print(f"Telegram checking error: {e}")
 
 def run_tracker(config, bot_token, chat_id):
-    for domain in config['target_domains']:
+    domains = config.get('target_domains', [])
+    for domain in domains:
         print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] Scanning {domain}...")
-        token = harvest_storefront_token(domain)
-        if not token:
-            print(f"Could not find token for {domain}. Skipping.")
-            continue
+        try:
+            token = harvest_storefront_token(domain)
+            if not token:
+                print(f"Could not find token for {domain}. Skipping.")
+                continue
+                
+            known_stock = get_all_known_stock(domain)
+            current_inventory = fetch_current_inventory(domain, token)
+            if not current_inventory:
+                print(f"No inventory returned for {domain}. Skipping update.")
+                continue
             
-        known_stock = get_all_known_stock(domain)
-        current_inventory = fetch_current_inventory(domain, token)
-        
-        for vid, item in current_inventory.items():
-            new_stock = item['stock']
-            old_stock = known_stock.get(vid)
-            
-            if old_stock is not None:
-                if 0 <= new_stock < old_stock:
-                    qty_sold = old_stock - new_stock
-                    print(f"SALE DETECTED: {domain} - {item.get('product_title')} ({qty_sold} sold)")
-                    record_sale(domain, item, qty_sold)
-                    
-                    event_type = 'SOLD OUT' if new_stock == 0 else 'NEW SALE'
-                    emoji = "🚨" if new_stock == 0 else "🛍️"
-                    
-                    caption = f"{emoji} <b>{event_type}!</b> {emoji}\n\n" \
-                              f"<b>Store:</b> {domain}\n" \
-                              f"<b>Product:</b> {item.get('product_title')}\n" \
-                              f"<b>Variant:</b> {item.get('variant_title')}\n" \
-                              f"<b>Price:</b> ₹{item.get('price'):,.2f}\n" \
-                              f"<b>Qty Sold:</b> {qty_sold}\n" \
-                              f"<b>Stock:</b> {old_stock} ➡️ {new_stock}\n\n" \
-                              f"🔗 <a href='{item.get('url')}'>View Product</a>"
-                              
-                    if item.get('image_url'):
-                        send_telegram_photo(bot_token, chat_id, item['image_url'], caption)
-                    else:
-                        send_telegram_message(bot_token, chat_id, caption)
-            
-            update_inventory_state(domain, item)
+            for vid, item in current_inventory.items():
+                new_stock = item['stock']
+                old_stock = known_stock.get(vid)
+                
+                if old_stock is not None:
+                    if 0 <= new_stock < old_stock:
+                        qty_sold = old_stock - new_stock
+                        print(f"SALE DETECTED: {domain} - {item.get('product_title')} ({qty_sold} sold)")
+                        record_sale(domain, item, qty_sold)
+                        
+                        event_type = 'SOLD OUT' if new_stock == 0 else 'NEW SALE'
+                        emoji = "🚨" if new_stock == 0 else "🛍️"
+                        
+                        caption = f"{emoji} <b>{event_type}!</b> {emoji}\n\n" \
+                                  f"<b>Store:</b> {domain}\n" \
+                                  f"<b>Product:</b> {item.get('product_title')}\n" \
+                                  f"<b>Variant:</b> {item.get('variant_title')}\n" \
+                                  f"<b>Price:</b> ₹{item.get('price'):,.2f}\n" \
+                                  f"<b>Qty Sold:</b> {qty_sold}\n" \
+                                  f"<b>Stock:</b> {old_stock} ➡️ {new_stock}\n\n" \
+                                  f"🔗 <a href='{item.get('url')}'>View Product</a>"
+                                  
+                        if item.get('image_url'):
+                            send_telegram_photo(bot_token, chat_id, item['image_url'], caption)
+                        else:
+                            send_telegram_message(bot_token, chat_id, caption)
+                
+                update_inventory_state(domain, item)
+        except Exception as e:
+            print(f"Error scanning domain {domain}: {e}")
 
 if __name__ == '__main__':
     # Initialize DB (creates file if not exists)
