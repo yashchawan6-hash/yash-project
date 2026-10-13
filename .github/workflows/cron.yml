@@ -3,20 +3,26 @@ name: Shopify 5-Min Tracker
 on:
   schedule:
     - cron: '*/5 * * * *'
-  workflow_dispatch: # Allows manual trigger from the Actions tab
+  workflow_dispatch: # Allows manual trigger from the Actions tab or cron-job.org
+
+concurrency:
+  group: shopify-tracker
+  cancel-in-progress: false
 
 jobs:
   track:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Needed to push the tracker.db back to the repo
+      contents: write # Needed to push tracker.db back to the repo
       
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
@@ -33,6 +39,45 @@ jobs:
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          
+          if [ ! -f tracker.db ]; then
+            echo "tracker.db not found, skipping commit."
+            exit 0
+          fi
+          
+          # Stage to check if changed
           git add tracker.db
-          # Only commit if there are changes to avoid empty commit errors
-          git diff --quiet && git diff --staged --quiet || (git commit -m "bot: auto-update inventory state" && git push)
+          if git diff --staged --quiet tracker.db; then
+            echo "No database changes detected."
+            exit 0
+          fi
+          
+          # Backup newly updated database
+          cp tracker.db /tmp/tracker_updated.db
+          
+          # Reliable sync and push loop with fast-forward reset
+          pushed=0
+          for attempt in 1 2 3 4 5; do
+            echo "Sync attempt $attempt..."
+            git fetch origin main
+            git reset --hard origin/main
+            cp /tmp/tracker_updated.db tracker.db
+            git add tracker.db
+            if git diff --staged --quiet tracker.db; then
+              echo "Database on remote is already identical to current scan."
+              pushed=1
+              break
+            fi
+            git commit -m "bot: auto-update inventory state [skip ci]"
+            if git push origin main; then
+              echo "Successfully pushed database update."
+              pushed=1
+              break
+            fi
+            echo "Push conflict, retrying in 3 seconds..."
+            sleep 3
+          done
+          
+          if [ $pushed -ne 1 ]; then
+            echo "::warning::Could not push database update after 5 attempts due to remote git lock/conflict."
+          fi
