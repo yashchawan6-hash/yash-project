@@ -106,6 +106,7 @@ def fetch_current_inventory(domain, token):
                     variant_id = str(int(decoded.split('/')[-1]))
                 except:
                     variant_id = global_id
+                numeric_vid = str(global_id).split('/')[-1]
                     
                 v_info = {
                     'product_title': p_title,
@@ -115,7 +116,7 @@ def fetch_current_inventory(domain, token):
                     'variant_title': v_node['title'],
                     'sku': v_node['sku'],
                     'price': float(v_node['price']['amount']),
-                    'url': f"https://www.{domain}/products/{p_handle}?variant={variant_id}",
+                    'url': f"https://www.{domain}/products/{p_handle}?variant={numeric_vid}",
                     'image_url': image_url
                 }
                 
@@ -165,8 +166,8 @@ def fetch_current_inventory(domain, token):
         
     current_inventory = {}
     for v in active_variants:
-        stock = stock_results.get(v['variant_id'], 0)
-        if stock > 0:
+        stock = stock_results.get(v['variant_id'], -1)
+        if stock >= 0:
             v['stock'] = stock
             current_inventory[v['variant_id']] = v
             
