@@ -2,7 +2,17 @@ import json
 import datetime
 import os
 import requests
-from db_manager import init_db, get_all_known_stock, update_inventory_state, record_sale, get_daily_sales_summary, get_last_update_id, set_last_update_id
+from db_manager import (
+    init_db,
+    get_all_known_stock,
+    update_inventory_state,
+    record_sale,
+    get_daily_sales_summary,
+    parse_sale_query_ist,
+    get_sales_summary_for_range,
+    get_last_update_id,
+    set_last_update_id
+)
 from shopify_scraper import harvest_storefront_token, fetch_current_inventory
 
 CONFIG_FILE = 'config.json'
@@ -13,11 +23,15 @@ def load_config():
 
 def send_telegram_message(bot_token, chat_id, text, parse_mode='HTML'):
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    payload = {'chat_id': chat_id, 'text': text, 'parse_mode': parse_mode}
-    try:
-        requests.post(url, json=payload, timeout=10)
-    except Exception as e:
-        print(f"Error sending msg: {e}")
+    # Safely handle Telegram 4096-char limit by chunking on newlines if needed
+    max_len = 4000
+    chunks = [text[i:i + max_len] for i in range(0, len(text), max_len)] if len(text) > max_len else [text]
+    for chunk in chunks:
+        payload = {'chat_id': chat_id, 'text': chunk, 'parse_mode': parse_mode}
+        try:
+            requests.post(url, json=payload, timeout=10)
+        except Exception as e:
+            print(f"Error sending msg: {e}")
 
 def send_telegram_photo(bot_token, chat_id, photo_url, caption):
     url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
@@ -30,29 +44,57 @@ def send_telegram_photo(bot_token, chat_id, photo_url, caption):
         print(f"Error sending photo: {e}")
         send_telegram_message(bot_token, chat_id, caption)
 
-def handle_sale_command(bot_token, chat_id):
-    store_summaries, top_products = get_daily_sales_summary()
-    msg = "📊 <b>DAILY SALES REPORT (Since Midnight)</b> 📊\n\n"
-    total_rev = 0
+def get_sale_help_text():
+    return (
+        "📖 <b>SALES REPORT COMMAND GUIDE (IST)</b> 📖\n\n"
+        "• <code>/sale</code> — Today's sales (since 12:00 AM IST)\n"
+        "• <code>/sale yesterday</code> — Yesterday's full sales\n"
+        "• <code>/sale 25-10-2026</code> — Sales on a specific date\n"
+        "• <code>/sale 01-10-2026 to 26-10-2026</code> — Custom date range\n"
+        "• <code>/sale 7d</code> or <code>/sale 30d</code> — Last 7 or 30 days\n"
+        "• <code>/sale month</code> — Current month-to-date\n"
+        "• <code>/sale lastmonth</code> — Previous full month\n"
+        "• <code>/sale all</code> — All-time total sales\n"
+    )
+
+def handle_sale_command(bot_token, chat_id, raw_text='/sale'):
+    start_utc, end_utc, label, is_multi_day, err = parse_sale_query_ist(raw_text)
+    if err:
+        if err == "HELP":
+            send_telegram_message(bot_token, chat_id, get_sale_help_text())
+        else:
+            send_telegram_message(bot_token, chat_id, f"⚠️ {err}\n\n" + get_sale_help_text())
+        return
+
+    store_summaries, top_products, daily_breakdown = get_sales_summary_for_range(start_utc, end_utc)
+    msg = f"📊 <b>SALES REPORT — {label}</b> 📊\n\n"
+    total_rev = 0.0
     total_items = 0
-    
+
     if not store_summaries:
-        msg += "No sales recorded yet today.\n"
+        msg += "No sales recorded for this period.\n"
     else:
         for store, items, rev in store_summaries:
             msg += f"🏪 <b>{store}</b>: {items} items sold | ₹{rev:,.2f}\n"
             total_rev += rev
             total_items += items
-            
+
         msg += f"\n💰 <b>TOTAL REVENUE:</b> ₹{total_rev:,.2f}\n"
         msg += f"📦 <b>TOTAL ITEMS SOLD:</b> {total_items}\n"
-        
+
+        if is_multi_day and daily_breakdown:
+            msg += f"\n📅 <b>DAILY BREAKDOWN (IST):</b>\n"
+            for ist_date, d_qty, d_rev in daily_breakdown[:15]:
+                msg += f"• <b>{ist_date}</b>: {d_qty} items — ₹{d_rev:,.2f}\n"
+            if len(daily_breakdown) > 15:
+                msg += f"<i>...and {len(daily_breakdown) - 15} earlier days</i>\n"
+
         if top_products:
-            msg += "\n🏆 <b>TOP SELLING ITEMS TODAY:</b>\n"
-            for p_title, v_title, qty, rev in top_products:
+            msg += "\n🏆 <b>TOP SELLING ITEMS:</b>\n"
+            for domain, p_title, v_title, qty, rev in top_products:
                 v_text = f" ({v_title})" if v_title and v_title != 'Default Title' else ""
-                msg += f"• {p_title}{v_text} - {qty} sold - ₹{rev:,.2f}\n"
-                
+                msg += f"• [{domain.split('.')[0].capitalize()}] {p_title}{v_text} - {qty} sold - ₹{rev:,.2f}\n"
+
     send_telegram_message(bot_token, chat_id, msg)
 
 def check_telegram_commands(bot_token, chat_id):
@@ -76,10 +118,10 @@ def check_telegram_commands(bot_token, chat_id):
                     max_update_id = update_id + 1
                     
                 msg = update.get('message', {})
-                text = msg.get('text', '')
-                if text.startswith('/sale'):
-                    print(f"Received /sale command, generating report...")
-                    handle_sale_command(bot_token, chat_id)
+                text = (msg.get('text') or '').strip()
+                if text.lower().startswith('/sale'):
+                    print(f"Received command '{text}', generating report...")
+                    handle_sale_command(bot_token, chat_id, text)
             
             if max_update_id and max_update_id != offset:
                 set_last_update_id(max_update_id)
