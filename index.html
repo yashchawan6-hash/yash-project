@@ -1,0 +1,1140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Live Shopify Sales & Inventory Dashboard (IST)</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card: #131b2e;
+      --card-hover: #19233c;
+      --border: #23304f;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --accent: #f59e0b;
+      --accent-soft: rgba(245, 158, 11, 0.14);
+      --emerald: #10b981;
+      --emerald-soft: rgba(16, 185, 129, 0.14);
+      --blue: #3b82f6;
+      --blue-soft: rgba(59, 130, 246, 0.14);
+      --purple: #a855f7;
+      --purple-soft: rgba(168, 85, 247, 0.14);
+      --danger: #ef4444;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      padding: 20px;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      padding: 20px 24px;
+      background: linear-gradient(135deg, #131b2e 0%, #1a2540 100%);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      margin-bottom: 20px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+    }
+
+    .header-title h1 {
+      font-size: 1.45rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .live-dot {
+      width: 10px;
+      height: 10px;
+      background: var(--emerald);
+      border-radius: 50%;
+      display: inline-block;
+      box-shadow: 0 0 12px var(--emerald);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.25); opacity: 0.65; }
+    }
+
+    .header-subtitle {
+      color: var(--muted);
+      font-size: 0.85rem;
+      margin-top: 4px;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .status-pill {
+      font-size: 0.8rem;
+      color: var(--muted);
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      padding: 7px 13px;
+      border-radius: 999px;
+    }
+
+    .btn {
+      background: var(--card-hover);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 8px 15px;
+      border-radius: 10px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn:hover {
+      border-color: var(--accent);
+      background: rgba(245, 158, 11, 0.12);
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #0b0f19;
+      border-color: var(--accent);
+    }
+
+    .btn-primary:hover {
+      background: #fbbf24;
+      color: #0b0f19;
+    }
+
+    /* Filter Bar */
+    .controls-panel {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 18px 22px;
+      margin-bottom: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .controls-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .control-group {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .control-label {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      font-weight: 600;
+      margin-right: 4px;
+    }
+
+    .pill-btn {
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      padding: 7px 14px;
+      border-radius: 999px;
+      font-size: 0.83rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .pill-btn:hover {
+      color: var(--text);
+      border-color: #475569;
+    }
+
+    .pill-btn.active {
+      background: var(--accent-soft);
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+
+    .date-input, .select-input, .search-input {
+      background: #0b0f19;
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 8px 12px;
+      border-radius: 10px;
+      font-size: 0.85rem;
+      outline: none;
+    }
+
+    .date-input:focus, .select-input:focus, .search-input:focus {
+      border-color: var(--accent);
+    }
+
+    ::-webkit-calendar-picker-indicator {
+      filter: invert(1);
+      cursor: pointer;
+    }
+
+    /* Active Period Banner */
+    .period-banner {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 18px;
+      background: rgba(245, 158, 11, 0.08);
+      border: 1px solid rgba(245, 158, 11, 0.25);
+      border-radius: 12px;
+      margin-bottom: 20px;
+      font-size: 0.92rem;
+    }
+
+    .period-banner strong {
+      color: var(--accent);
+    }
+
+    /* KPI Grid */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .kpi-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px 20px;
+    }
+
+    .kpi-label {
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-weight: 600;
+    }
+
+    .kpi-value {
+      font-size: 1.75rem;
+      font-weight: 800;
+      margin-top: 6px;
+      color: var(--text);
+    }
+
+    .kpi-sub {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    /* Store Breakdown Cards */
+    .store-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .store-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px 20px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .store-card:hover {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+    }
+
+    .store-card.selected-store {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent);
+    }
+
+    .store-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .store-name {
+      font-weight: 700;
+      font-size: 1.05rem;
+    }
+
+    .store-badge {
+      font-size: 0.75rem;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-weight: 600;
+    }
+
+    .badge-dulhan { background: var(--accent-soft); color: var(--accent); }
+    .badge-kanshi { background: var(--blue-soft); color: #60a5fa; }
+    .badge-muskan { background: var(--purple-soft); color: #c084fc; }
+
+    .store-metrics {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-top: 6px;
+    }
+
+    .store-rev {
+      font-size: 1.45rem;
+      font-weight: 800;
+      color: var(--emerald);
+    }
+
+    .store-qty {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .progress-bar {
+      height: 6px;
+      background: rgba(255, 255, 255, 0.06);
+      border-radius: 999px;
+      margin-top: 12px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 999px;
+    }
+
+    /* Layout Grid for Tables */
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1.3fr;
+      gap: 20px;
+      margin-bottom: 24px;
+    }
+
+    @media (max-width: 1024px) {
+      .two-col {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .section-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+
+    .section-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .section-header h2 {
+      font-size: 1.02rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      max-height: 540px;
+      overflow-y: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.86rem;
+    }
+
+    th {
+      background: #0f1626;
+      color: var(--muted);
+      text-align: left;
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 0.74rem;
+      letter-spacing: 0.04em;
+      padding: 12px 16px;
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 11px 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      vertical-align: middle;
+    }
+
+    tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .text-right { text-align: right; }
+    .text-center { text-align: center; }
+    .font-mono { font-variant-numeric: tabular-nums; }
+    .price-col { color: var(--emerald); font-weight: 700; }
+
+    .link-btn {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.8rem;
+    }
+    .link-btn:hover { text-decoration: underline; }
+
+    .clickable-row { cursor: pointer; }
+    .clickable-row:hover td { background: rgba(245, 158, 11, 0.08); }
+
+    .loading-overlay {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--muted);
+      font-size: 1rem;
+    }
+
+    .error-box {
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid var(--danger);
+      color: #fca5a5;
+      padding: 16px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <div class="header-title">
+        <h1><span class="live-dot"></span> Shopify Multi-Store Sales Dashboard (IST)</h1>
+        <div class="header-subtitle">
+          100% Live SQLite Engine synced directly with <code>yashchawan6-hash/yash-project</code> • Timezone locked to <strong>IST (UTC+5:30)</strong>
+        </div>
+      </div>
+      <div class="header-actions">
+        <span id="syncStatus" class="status-pill">Loading live database...</span>
+        <button class="btn" onclick="exportCurrentLedgerCSV()">⬇️ Export CSV</button>
+        <button class="btn btn-primary" onclick="loadLiveDatabase()">🔄 Refresh Live Data</button>
+      </div>
+    </div>
+
+    <div id="errorBox" class="error-box"></div>
+
+    <!-- Controls Panel -->
+    <div class="controls-panel">
+      <!-- Store Filter Row -->
+      <div class="controls-row">
+        <div class="control-group" id="storeFilterGroup">
+          <span class="control-label">Store:</span>
+          <button class="pill-btn active" data-store="ALL" onclick="setStoreFilter('ALL')">All Stores (3)</button>
+          <button class="pill-btn" data-store="dulhanjewels.com" onclick="setStoreFilter('dulhanjewels.com')">Dulhan Jewels</button>
+          <button class="pill-btn" data-store="kanshijewels.com" onclick="setStoreFilter('kanshijewels.com')">Kanshi Jewels</button>
+          <button class="pill-btn" data-store="muskanjewel.com" onclick="setStoreFilter('muskanjewel.com')">Muskan Jewels</button>
+        </div>
+
+        <div class="control-group">
+          <span class="control-label">Single Day / Range (IST):</span>
+          <input type="date" id="startDateInput" class="date-input" onchange="onCustomDateChange()" />
+          <span style="color: var(--muted); font-size: 0.85rem;">to</span>
+          <input type="date" id="endDateInput" class="date-input" onchange="onCustomDateChange()" />
+        </div>
+      </div>
+
+      <!-- Quick Date Presets Row -->
+      <div class="controls-row">
+        <div class="control-group" id="presetFilterGroup">
+          <span class="control-label">Quick Period:</span>
+          <button class="pill-btn active" data-preset="today" onclick="applyPreset('today')">Today (IST)</button>
+          <button class="pill-btn" data-preset="yesterday" onclick="applyPreset('yesterday')">Yesterday</button>
+          <button class="pill-btn" data-preset="7d" onclick="applyPreset('7d')">Last 7 Days</button>
+          <button class="pill-btn" data-preset="14d" onclick="applyPreset('14d')">Last 14 Days</button>
+          <button class="pill-btn" data-preset="30d" onclick="applyPreset('30d')">Last 30 Days</button>
+          <button class="pill-btn" data-preset="month" onclick="applyPreset('month')">This Month (MTD)</button>
+          <button class="pill-btn" data-preset="lastmonth" onclick="applyPreset('lastmonth')">Last Month</button>
+          <button class="pill-btn" data-preset="all" onclick="applyPreset('all')">All-Time Total</button>
+        </div>
+
+        <div class="control-group">
+          <span class="control-label">Jump to Single Date:</span>
+          <input type="date" id="singleDatePicker" class="date-input" onchange="onSingleDatePick(this.value)" title="Pick any single date to view only that day's sales" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Active Filter Summary Banner -->
+    <div class="period-banner">
+      <div>
+        Showing Sales for: <strong id="activeStoreLabel">All Stores</strong> • Period (IST): <strong id="activePeriodLabel">Today</strong>
+      </div>
+      <div style="color: var(--muted); font-size: 0.83rem;">
+        💡 Tip: Click any store card or any date in the Daily Breakdown table to drill down!
+      </div>
+    </div>
+
+    <!-- KPI Summary Cards -->
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-label">Total Revenue (IST Period)</div>
+        <div class="kpi-value" id="kpiRevenue" style="color: var(--emerald);">₹0</div>
+        <div class="kpi-sub" id="kpiRevenueSub">Across selected stores & dates</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Total Units Sold</div>
+        <div class="kpi-value" id="kpiUnits">0</div>
+        <div class="kpi-sub" id="kpiEventsSub">0 sale events recorded</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Average Selling Price / Unit</div>
+        <div class="kpi-value" id="kpiAvgPrice">₹0</div>
+        <div class="kpi-sub">Gross item revenue ÷ units sold</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Active Days with Sales</div>
+        <div class="kpi-value" id="kpiDaysCount">0</div>
+        <div class="kpi-sub" id="kpiDailyAvgSub">Avg ₹0 / day</div>
+      </div>
+    </div>
+
+    <!-- Store Comparison Cards -->
+    <div class="store-grid" id="storeCardsContainer"></div>
+
+    <!-- Two Column: Daily Breakdown & Top Products -->
+    <div class="two-col">
+      <!-- Daily Breakdown -->
+      <div class="section-card" style="margin-bottom: 0;">
+        <div class="section-header">
+          <h2>📅 Day-by-Day Sales Breakdown (IST)</h2>
+          <span style="font-size: 0.78rem; color: var(--muted);">Click a date row to inspect that day</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Date (IST)</th>
+                <th class="text-right">Dulhan</th>
+                <th class="text-right">Kanshi</th>
+                <th class="text-right">Muskan</th>
+                <th class="text-right">Total Units</th>
+                <th class="text-right">Total Revenue</th>
+              </tr>
+            </thead>
+            <tbody id="dailyTableBody">
+              <tr><td colspan="6" class="loading-overlay">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Top Selling Products -->
+      <div class="section-card" style="margin-bottom: 0;">
+        <div class="section-header">
+          <h2>🏆 Top Selling Products (Selected Period)</h2>
+          <span id="topProductsCount" style="font-size: 0.78rem; color: var(--muted);">Top 25 by Revenue</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Store</th>
+                <th>Product & Variant</th>
+                <th class="text-right">Unit Price</th>
+                <th class="text-right">Qty Sold</th>
+                <th class="text-right">Revenue</th>
+              </tr>
+            </thead>
+            <tbody id="topProductsBody">
+              <tr><td colspan="5" class="loading-overlay">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Detailed Sales Ledger -->
+    <div class="section-card">
+      <div class="section-header">
+        <h2>🧾 Complete Itemized Sales Ledger (Exact IST Timestamps)</h2>
+        <div style="display: flex; gap: 10px; align-items: center;">
+          <input type="text" id="searchInput" class="search-input" placeholder="🔍 Search product, SKU, or variant..." oninput="renderLedgerTable()" style="width: 260px;" />
+          <span id="ledgerCountBadge" class="status-pill">0 records</span>
+        </div>
+      </div>
+      <div class="table-wrap" style="max-height: 620px;">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Date & Time (IST)</th>
+              <th>Store</th>
+              <th>Product Title</th>
+              <th>Variant</th>
+              <th class="text-right">Unit Price</th>
+              <th class="text-center">Qty Sold</th>
+              <th class="text-right">Total Amount</th>
+              <th class="text-center">Store Link</th>
+            </tr>
+          </thead>
+          <tbody id="ledgerTableBody">
+            <tr><td colspan="9" class="loading-overlay">Loading live database...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const GITHUB_OWNER = "yashchawan6-hash";
+    const GITHUB_REPO = "yash-project";
+    const STORES = ["dulhanjewels.com", "kanshijewels.com", "muskanjewel.com"];
+    const STORE_NAMES = {
+      "dulhanjewels.com": "Dulhan Jewels",
+      "kanshijewels.com": "Kanshi Jewels",
+      "muskanjewel.com": "Muskan Jewels"
+    };
+
+    let SQL_ENGINE = null;
+    let dbInstance = null;
+    let selectedStore = "ALL";
+    let currentLedgerRows = [];
+    let minDbDateIST = "2026-09-05";
+    let maxDbDateIST = getTodayIST();
+
+    // Always compute exact IST (UTC+5:30) date string YYYY-MM-DD regardless of browser timezone
+    function getTodayIST() {
+      const nowUtcMs = Date.now();
+      const istMs = nowUtcMs + (5.5 * 3600 * 1000);
+      return new Date(istMs).toISOString().slice(0, 10);
+    }
+
+    function addDaysIST(yyyyMmDd, deltaDays) {
+      const [y, m, d] = yyyyMmDd.split("-").map(Number);
+      const dt = new Date(Date.UTC(y, m - 1, d));
+      dt.setUTCDate(dt.getUTCDate() + deltaDays);
+      return dt.toISOString().slice(0, 10);
+    }
+
+    function formatINR(num) {
+      return "₹" + Number(num || 0).toLocaleString("en-IN", {
+        minimumFractionDigits: num % 1 !== 0 ? 2 : 0,
+        maximumFractionDigits: 2
+      });
+    }
+
+    function getStoreBadgeHTML(domain) {
+      if (domain === "dulhanjewels.com") return `<span class="store-badge badge-dulhan">Dulhan Jewels</span>`;
+      if (domain === "kanshijewels.com") return `<span class="store-badge badge-kanshi">Kanshi Jewels</span>`;
+      if (domain === "muskanjewel.com") return `<span class="store-badge badge-muskan">Muskan Jewels</span>`;
+      return `<span class="store-badge">${domain}</span>`;
+    }
+
+    async function initSqlEngine() {
+      if (!SQL_ENGINE) {
+        SQL_ENGINE = await initSqlJs({
+          locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}`
+        });
+      }
+    }
+
+    async function loadLiveDatabase() {
+      const statusEl = document.getElementById("syncStatus");
+      const errBox = document.getElementById("errorBox");
+      errBox.style.display = "none";
+      statusEl.textContent = "⏳ Fetching latest tracker.db from GitHub...";
+
+      try {
+        await initSqlEngine();
+
+        // 1. Try getting latest commit SHA to bypass CDN cache completely
+        let dbUrl = `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/main/tracker.db?t=${Date.now()}`;
+        let commitTimeStr = "";
+        try {
+          const commitResp = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/commits/main?t=${Date.now()}`);
+          if (commitResp.ok) {
+            const commitData = await commitResp.json();
+            if (commitData && commitData.sha) {
+              dbUrl = `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/${commitData.sha}/tracker.db`;
+              const commitDateUTC = new Date(commitData.commit.author.date);
+              const commitIST = new Date(commitDateUTC.getTime() + 5.5 * 3600 * 1000);
+              commitTimeStr = commitIST.toISOString().replace("T", " ").slice(0, 19) + " IST";
+            }
+          }
+        } catch (e) {
+          console.warn("Commit SHA lookup skipped, using cache-busted main URL:", e);
+        }
+
+        const resp = await fetch(dbUrl, { cache: "no-store" });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status} while downloading tracker.db`);
+        const buffer = await resp.arrayBuffer();
+
+        if (dbInstance) dbInstance.close();
+        dbInstance = new SQL_ENGINE.Database(new Uint8Array(buffer));
+
+        // Find min and max IST dates in sales_log
+        const boundsRes = dbInstance.exec(`
+          SELECT 
+            MIN(date(timestamp, '+5 hours', '+30 minutes')),
+            MAX(date(timestamp, '+5 hours', '+30 minutes')),
+            COUNT(*)
+          FROM sales_log
+        `);
+        if (boundsRes.length && boundsRes[0].values.length) {
+          minDbDateIST = boundsRes[0].values[0][0] || "2026-09-05";
+          maxDbDateIST = getTodayIST();
+        }
+
+        // Set default dates if empty
+        const startInput = document.getElementById("startDateInput");
+        const endInput = document.getElementById("endDateInput");
+        if (!startInput.value || !endInput.value) {
+          const today = getTodayIST();
+          startInput.value = today;
+          endInput.value = today;
+          document.getElementById("singleDatePicker").value = today;
+        }
+
+        statusEl.textContent = commitTimeStr
+          ? `✅ Live Synced (Last DB Update: ${commitTimeStr})`
+          : `✅ Live Synced (${new Date().toLocaleTimeString()} IST)`;
+
+        refreshDashboardView();
+      } catch (err) {
+        console.error(err);
+        errBox.style.display = "block";
+        errBox.innerHTML = `<strong>Error loading live database:</strong> ${err.message}`;
+        statusEl.textContent = "⚠️ Sync failed";
+      }
+    }
+
+    function setStoreFilter(store) {
+      selectedStore = store;
+      document.querySelectorAll("#storeFilterGroup .pill-btn").forEach(btn => {
+        btn.classList.toggle("active", btn.getAttribute("data-store") === store);
+      });
+      refreshDashboardView();
+    }
+
+    function applyPreset(preset) {
+      const today = getTodayIST();
+      let start = today;
+      let end = today;
+
+      if (preset === "today") {
+        start = today;
+        end = today;
+      } else if (preset === "yesterday") {
+        const yest = addDaysIST(today, -1);
+        start = yest;
+        end = yest;
+      } else if (preset === "7d") {
+        start = addDaysIST(today, -6);
+        end = today;
+      } else if (preset === "14d") {
+        start = addDaysIST(today, -13);
+        end = today;
+      } else if (preset === "30d") {
+        start = addDaysIST(today, -29);
+        end = today;
+      } else if (preset === "month") {
+        start = today.slice(0, 8) + "01";
+        end = today;
+      } else if (preset === "lastmonth") {
+        const firstThisMonth = today.slice(0, 8) + "01";
+        const lastPrevMonth = addDaysIST(firstThisMonth, -1);
+        start = lastPrevMonth.slice(0, 8) + "01";
+        end = lastPrevMonth;
+      } else if (preset === "all") {
+        start = minDbDateIST;
+        end = today;
+      }
+
+      document.getElementById("startDateInput").value = start;
+      document.getElementById("endDateInput").value = end;
+      document.getElementById("singleDatePicker").value = start === end ? start : "";
+
+      document.querySelectorAll("#presetFilterGroup .pill-btn").forEach(btn => {
+        btn.classList.toggle("active", btn.getAttribute("data-preset") === preset);
+      });
+
+      refreshDashboardView();
+    }
+
+    function onCustomDateChange() {
+      let start = document.getElementById("startDateInput").value;
+      let end = document.getElementById("endDateInput").value;
+      if (start && end && start > end) {
+        const tmp = start;
+        start = end;
+        end = tmp;
+        document.getElementById("startDateInput").value = start;
+        document.getElementById("endDateInput").value = end;
+      }
+      document.getElementById("singleDatePicker").value = (start && start === end) ? start : "";
+      document.querySelectorAll("#presetFilterGroup .pill-btn").forEach(btn => btn.classList.remove("active"));
+      refreshDashboardView();
+    }
+
+    function onSingleDatePick(dateVal) {
+      if (!dateVal) return;
+      document.getElementById("startDateInput").value = dateVal;
+      document.getElementById("endDateInput").value = dateVal;
+      document.querySelectorAll("#presetFilterGroup .pill-btn").forEach(btn => btn.classList.remove("active"));
+      refreshDashboardView();
+    }
+
+    function refreshDashboardView() {
+      if (!dbInstance) return;
+
+      const startDate = document.getElementById("startDateInput").value || getTodayIST();
+      const endDate = document.getElementById("endDateInput").value || getTodayIST();
+
+      // Update Banner
+      document.getElementById("activeStoreLabel").textContent =
+        selectedStore === "ALL" ? "All 3 Stores" : `${STORE_NAMES[selectedStore]} (${selectedStore})`;
+      document.getElementById("activePeriodLabel").textContent =
+        startDate === endDate ? `${startDate} (Full Day IST)` : `${startDate} to ${endDate} (IST)`;
+
+      // 1. Store Totals across the date range (always compute for all 3 stores so cards show comparison)
+      const storeTotalsMap = {
+        "dulhanjewels.com": { units: 0, rev: 0, events: 0 },
+        "kanshijewels.com": { units: 0, rev: 0, events: 0 },
+        "muskanjewel.com": { units: 0, rev: 0, events: 0 }
+      };
+
+      const storeStmt = dbInstance.prepare(`
+        SELECT 
+          domain,
+          COUNT(*) as events,
+          COALESCE(SUM(qty_sold), 0) as units,
+          COALESCE(SUM(price * qty_sold), 0) as rev
+        FROM sales_log
+        WHERE date(timestamp, '+5 hours', '+30 minutes') >= :start
+          AND date(timestamp, '+5 hours', '+30 minutes') <= :end
+        GROUP BY domain
+      `);
+      storeStmt.bind({ ":start": startDate, ":end": endDate });
+      let allStoresRev = 0;
+      while (storeStmt.step()) {
+        const row = storeStmt.getAsObject();
+        if (storeTotalsMap[row.domain]) {
+          storeTotalsMap[row.domain] = {
+            events: Number(row.events || 0),
+            units: Number(row.units || 0),
+            rev: Number(row.rev || 0)
+          };
+          allStoresRev += Number(row.rev || 0);
+        }
+      }
+      storeStmt.free();
+
+      // Render Store Cards
+      const storeCardsHTML = STORES.map(domain => {
+        const st = storeTotalsMap[domain];
+        const pct = allStoresRev > 0 ? ((st.rev / allStoresRev) * 100).toFixed(1) : "0.0";
+        const isSelected = selectedStore === domain;
+        return `
+          <div class="store-card ${isSelected ? 'selected-store' : ''}" onclick="setStoreFilter('${isSelected ? 'ALL' : domain}')">
+            <div class="store-header">
+              <span class="store-name">${STORE_NAMES[domain]}</span>
+              ${getStoreBadgeHTML(domain)}
+            </div>
+            <div style="font-size: 0.78rem; color: var(--muted);">${domain} • ${pct}% of period revenue</div>
+            <div class="store-metrics">
+              <div class="store-rev font-mono">${formatINR(st.rev)}</div>
+              <div class="store-qty font-mono">${st.units} units (${st.events} orders/items)</div>
+            </div>
+            <div class="progress-bar">
+              <div class="progress-fill" style="width: ${pct}%;"></div>
+            </div>
+          </div>
+        `;
+      }).join("");
+      document.getElementById("storeCardsContainer").innerHTML = storeCardsHTML;
+
+      // 2. Compute filtered KPIs
+      let filteredRev = 0;
+      let filteredUnits = 0;
+      let filteredEvents = 0;
+      if (selectedStore === "ALL") {
+        STORES.forEach(d => {
+          filteredRev += storeTotalsMap[d].rev;
+          filteredUnits += storeTotalsMap[d].units;
+          filteredEvents += storeTotalsMap[d].events;
+        });
+      } else if (storeTotalsMap[selectedStore]) {
+        filteredRev = storeTotalsMap[selectedStore].rev;
+        filteredUnits = storeTotalsMap[selectedStore].units;
+        filteredEvents = storeTotalsMap[selectedStore].events;
+      }
+
+      // 3. Daily Breakdown Query
+      const dailyStmt = dbInstance.prepare(`
+        SELECT 
+          date(timestamp, '+5 hours', '+30 minutes') as ist_date,
+          SUM(CASE WHEN domain = 'dulhanjewels.com' THEN price * qty_sold ELSE 0 END) as dulhan_rev,
+          SUM(CASE WHEN domain = 'dulhanjewels.com' THEN qty_sold ELSE 0 END) as dulhan_qty,
+          SUM(CASE WHEN domain = 'kanshijewels.com' THEN price * qty_sold ELSE 0 END) as kanshi_rev,
+          SUM(CASE WHEN domain = 'kanshijewels.com' THEN qty_sold ELSE 0 END) as kanshi_qty,
+          SUM(CASE WHEN domain = 'muskanjewel.com' THEN price * qty_sold ELSE 0 END) as muskan_rev,
+          SUM(CASE WHEN domain = 'muskanjewel.com' THEN qty_sold ELSE 0 END) as muskan_qty,
+          SUM(qty_sold) as total_qty,
+          SUM(price * qty_sold) as total_rev
+        FROM sales_log
+        WHERE date(timestamp, '+5 hours', '+30 minutes') >= :start
+          AND date(timestamp, '+5 hours', '+30 minutes') <= :end
+          AND (:store = 'ALL' OR domain = :store)
+        GROUP BY ist_date
+        ORDER BY ist_date DESC
+      `);
+      dailyStmt.bind({ ":start": startDate, ":end": endDate, ":store": selectedStore });
+      const dailyRows = [];
+      while (dailyStmt.step()) {
+        dailyRows.push(dailyStmt.getAsObject());
+      }
+      dailyStmt.free();
+
+      // Update KPI Cards
+      document.getElementById("kpiRevenue").textContent = formatINR(filteredRev);
+      document.getElementById("kpiRevenueSub").textContent =
+        selectedStore === "ALL" ? "Combined across all 3 stores" : `Only ${STORE_NAMES[selectedStore]}`;
+      document.getElementById("kpiUnits").textContent = filteredUnits.toLocaleString("en-IN");
+      document.getElementById("kpiEventsSub").textContent = `${filteredEvents.toLocaleString("en-IN")} line-item sale events`;
+      const avgPrice = filteredUnits > 0 ? filteredRev / filteredUnits : 0;
+      document.getElementById("kpiAvgPrice").textContent = formatINR(avgPrice);
+      const activeDays = dailyRows.length;
+      document.getElementById("kpiDaysCount").textContent = activeDays;
+      const dailyAvgRev = activeDays > 0 ? filteredRev / activeDays : 0;
+      document.getElementById("kpiDailyAvgSub").textContent = `Avg ${formatINR(dailyAvgRev)} / active day`;
+
+      // Render Daily Breakdown Table
+      const dailyBody = document.getElementById("dailyTableBody");
+      if (dailyRows.length === 0) {
+        dailyBody.innerHTML = `<tr><td colspan="6" class="loading-overlay">No sales recorded in this date range.</td></tr>`;
+      } else {
+        dailyBody.innerHTML = dailyRows.map(r => `
+          <tr class="clickable-row" onclick="onSingleDatePick('${r.ist_date}')" title="Click to view only ${r.ist_date}">
+            <td class="font-mono"><strong>${r.ist_date}</strong></td>
+            <td class="text-right font-mono">${r.dulhan_qty > 0 ? `${formatINR(r.dulhan_rev)} <span style="color:var(--muted);font-size:0.75rem;">(${r.dulhan_qty})</span>` : '—'}</td>
+            <td class="text-right font-mono">${r.kanshi_qty > 0 ? `${formatINR(r.kanshi_rev)} <span style="color:var(--muted);font-size:0.75rem;">(${r.kanshi_qty})</span>` : '—'}</td>
+            <td class="text-right font-mono">${r.muskan_qty > 0 ? `${formatINR(r.muskan_rev)} <span style="color:var(--muted);font-size:0.75rem;">(${r.muskan_qty})</span>` : '—'}</td>
+            <td class="text-right font-mono"><strong>${r.total_qty}</strong></td>
+            <td class="text-right font-mono price-col">${formatINR(r.total_rev)}</td>
+          </tr>
+        `).join("");
+      }
+
+      // 4. Top Selling Products Query
+      const topStmt = dbInstance.prepare(`
+        SELECT 
+          domain,
+          variant_id,
+          product_title,
+          variant_title,
+          price,
+          SUM(qty_sold) as total_qty,
+          SUM(price * qty_sold) as total_rev
+        FROM sales_log
+        WHERE date(timestamp, '+5 hours', '+30 minutes') >= :start
+          AND date(timestamp, '+5 hours', '+30 minutes') <= :end
+          AND (:store = 'ALL' OR domain = :store)
+        GROUP BY domain, variant_id
+        ORDER BY total_rev DESC
+        LIMIT 25
+      `);
+      topStmt.bind({ ":start": startDate, ":end": endDate, ":store": selectedStore });
+      const topRows = [];
+      while (topStmt.step()) {
+        topRows.push(topStmt.getAsObject());
+      }
+      topStmt.free();
+
+      const topBody = document.getElementById("topProductsBody");
+      if (topRows.length === 0) {
+        topBody.innerHTML = `<tr><td colspan="5" class="loading-overlay">No products sold in this period.</td></tr>`;
+      } else {
+        topBody.innerHTML = topRows.map(r => {
+          const vTitle = r.variant_title && r.variant_title !== "Default Title" ? ` <span style="color:var(--muted);">(${r.variant_title})</span>` : "";
+          return `
+            <tr>
+              <td>${getStoreBadgeHTML(r.domain)}</td>
+              <td><strong>${r.product_title}</strong>${vTitle}</td>
+              <td class="text-right font-mono">${formatINR(r.price)}</td>
+              <td class="text-right font-mono"><strong>${r.total_qty}</strong></td>
+              <td class="text-right font-mono price-col">${formatINR(r.total_rev)}</td>
+            </tr>
+          `;
+        }).join("");
+      }
+
+      // 5. Complete Itemized Sales Ledger Query
+      const ledgerStmt = dbInstance.prepare(`
+        SELECT 
+          id,
+          datetime(timestamp, '+5 hours', '+30 minutes') as ist_datetime,
+          domain,
+          variant_id,
+          product_title,
+          variant_title,
+          sku,
+          price,
+          qty_sold,
+          (price * qty_sold) as total_amount
+        FROM sales_log
+        WHERE date(timestamp, '+5 hours', '+30 minutes') >= :start
+          AND date(timestamp, '+5 hours', '+30 minutes') <= :end
+          AND (:store = 'ALL' OR domain = :store)
+        ORDER BY id DESC
+      `);
+      ledgerStmt.bind({ ":start": startDate, ":end": endDate, ":store": selectedStore });
+      currentLedgerRows = [];
+      while (ledgerStmt.step()) {
+        currentLedgerRows.push(ledgerStmt.getAsObject());
+      }
+      ledgerStmt.free();
+
+      renderLedgerTable();
+    }
+
+    function renderLedgerTable() {
+      const q = (document.getElementById("searchInput").value || "").trim().toLowerCase();
+      const filtered = q
+        ? currentLedgerRows.filter(r =>
+            (r.product_title || "").toLowerCase().includes(q) ||
+            (r.variant_title || "").toLowerCase().includes(q) ||
+            (r.sku || "").toLowerCase().includes(q) ||
+            (r.domain || "").toLowerCase().includes(q)
+          )
+        : currentLedgerRows;
+
+      document.getElementById("ledgerCountBadge").textContent = `${filtered.length} sale records`;
+      const tbody = document.getElementById("ledgerTableBody");
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="9" class="loading-overlay">No matching sale records found for this filter.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = filtered.slice(0, 500).map((r, idx) => {
+        const numVid = String(r.variant_id || "").split("/").pop();
+        const searchUrl = `https://www.${r.domain}/search?q=${encodeURIComponent(r.product_title)}`;
+        const vText = r.variant_title && r.variant_title !== "Default Title" ? r.variant_title : "—";
+        const timeClean = String(r.ist_datetime || "").slice(0, 19);
+        return `
+          <tr>
+            <td class="font-mono" style="color: var(--muted);">${idx + 1}</td>
+            <td class="font-mono"><strong>${timeClean}</strong></td>
+            <td>${getStoreBadgeHTML(r.domain)}</td>
+            <td><strong>${r.product_title}</strong></td>
+            <td style="color: var(--muted);">${vText}</td>
+            <td class="text-right font-mono">${formatINR(r.price)}</td>
+            <td class="text-center font-mono"><strong>${r.qty_sold}</strong></td>
+            <td class="text-right font-mono price-col">${formatINR(r.total_amount)}</td>
+            <td class="text-center"><a class="link-btn" href="${searchUrl}" target="_blank" rel="noopener">View ↗</a></td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    function exportCurrentLedgerCSV() {
+      if (!currentLedgerRows.length) {
+        alert("No records in the current view to export.");
+        return;
+      }
+      const headers = ["ID", "Date_Time_IST", "Store", "Product_Title", "Variant", "SKU", "Unit_Price_INR", "Qty_Sold", "Total_Amount_INR"];
+      const csvLines = [headers.join(",")];
+      currentLedgerRows.forEach(r => {
+        const row = [
+          r.id,
+          `"${String(r.ist_datetime || "").slice(0, 19)}"`,
+          `"${r.domain}"`,
+          `"${String(r.product_title || "").replace(/"/g, '""')}"`,
+          `"${String(r.variant_title || "").replace(/"/g, '""')}"`,
+          `"${String(r.sku || "").replace(/"/g, '""')}"`,
+          r.price,
+          r.qty_sold,
+          r.total_amount
+        ];
+        csvLines.push(row.join(","));
+      });
+
+      const blob = new Blob([csvLines.join("\n")], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const start = document.getElementById("startDateInput").value;
+      const end = document.getElementById("endDateInput").value;
+      a.href = url;
+      a.download = `Shopify_Sales_${selectedStore}_${start}_to_${end}_IST.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    // Auto-load on startup and auto-refresh every 2 minutes
+    window.addEventListener("DOMContentLoaded", () => {
+      loadLiveDatabase();
+      setInterval(loadLiveDatabase, 120000);
+    });
+  </script>
+</body>
+</html>
