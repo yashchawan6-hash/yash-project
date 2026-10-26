@@ -76,7 +76,7 @@ def get_all_known_stock(domain):
 def update_inventory_state(domain, item):
     conn = get_connection()
     cursor = conn.cursor()
-    now = datetime.datetime.now()
+    now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
     cursor.execute('''
         INSERT INTO inventory_state (domain, variant_id, product_title, variant_title, sku, price, stock, last_checked)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -101,7 +101,7 @@ def update_inventory_state(domain, item):
 def record_sale(domain, item, qty_sold):
     conn = get_connection()
     cursor = conn.cursor()
-    now = datetime.datetime.now()
+    now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
     cursor.execute('''
         INSERT INTO sales_log (domain, variant_id, product_title, variant_title, sku, price, qty_sold, timestamp)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -119,12 +119,16 @@ def record_sale(domain, item, qty_sold):
     conn.close()
 
 def get_daily_sales_summary():
-    """Returns a summary of sales from midnight today."""
+    """Returns a summary of sales from midnight today in IST (UTC+5:30)."""
     conn = get_connection()
     cursor = conn.cursor()
     
-    # Midnight today
-    today_midnight = datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    # Calculate Midnight IST (UTC+5:30) and convert back to naive UTC to match DB timestamps
+    ist_offset = datetime.timedelta(hours=5, minutes=30)
+    now_utc = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+    now_ist = now_utc + ist_offset
+    midnight_ist = now_ist.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_midnight = midnight_ist - ist_offset
     
     cursor.execute('''
         SELECT 
