@@ -100,6 +100,37 @@ def update_inventory_state(domain, item):
     conn.commit()
     conn.close()
 
+def batch_update_inventory_state(domain, items_dict):
+    if not items_dict:
+        return
+    conn = get_connection()
+    cursor = conn.cursor()
+    now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+    rows = [
+        (
+            domain,
+            item['variant_id'],
+            item.get('product_title', ''),
+            item.get('variant_title', ''),
+            item.get('sku', ''),
+            item.get('price', 0.0),
+            item['stock'],
+            now
+        )
+        for item in items_dict.values()
+    ]
+    cursor.executemany('''
+        INSERT INTO inventory_state (domain, variant_id, product_title, variant_title, sku, price, stock, last_checked)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(domain, variant_id) DO UPDATE SET
+            stock = excluded.stock,
+            price = excluded.price,
+            product_title = excluded.product_title,
+            last_checked = excluded.last_checked
+    ''', rows)
+    conn.commit()
+    conn.close()
+
 def record_sale(domain, item, qty_sold):
     conn = get_connection()
     cursor = conn.cursor()

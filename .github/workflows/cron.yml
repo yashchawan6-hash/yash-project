@@ -5,6 +5,9 @@ on:
     - cron: '*/5 * * * *'
   workflow_dispatch: # Allows manual trigger from the Actions tab or cron-job.org
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 concurrency:
   group: shopify-tracker
   cancel-in-progress: false
@@ -12,52 +15,51 @@ concurrency:
 jobs:
   track:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write # Needed to push tracker.db back to the repo
-      
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-
-      - name: Install dependencies
-        run: pip install requests
+      - name: Verify Python and requests
+        run: |
+          python3 --version
+          python3 -c "import requests, sqlite3" 2>/dev/null || pip3 install --quiet --break-system-packages requests
 
       - name: Run Tracker Bot
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python cron_runner.py
+          PYTHONUNBUFFERED: "1"
+        run: python3 cron_runner.py
 
       - name: Commit and push Database updates
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          
+
           if [ ! -f tracker.db ]; then
             echo "tracker.db not found, skipping commit."
             exit 0
           fi
-          
+
           # Stage to check if changed
           git add tracker.db
           if git diff --staged --quiet tracker.db; then
             echo "No database changes detected."
             exit 0
           fi
-          
+
           # Backup newly updated database
           cp tracker.db /tmp/tracker_updated.db
-          
+
           # Reliable sync and push loop with fast-forward reset
           pushed=0
-          for attempt in 1 2 3 4 5; do
+          for attempt in 1 2 3 4 5 6; do
             echo "Sync attempt $attempt..."
             git fetch origin main
             git reset --hard origin/main
@@ -77,7 +79,7 @@ jobs:
             echo "Push conflict, retrying in 3 seconds..."
             sleep 3
           done
-          
+
           if [ $pushed -ne 1 ]; then
-            echo "::warning::Could not push database update after 5 attempts due to remote git lock/conflict."
+            echo "::warning::Could not push database update after 6 attempts due to remote git lock/conflict."
           fi

@@ -6,6 +6,7 @@ from db_manager import (
     init_db,
     get_all_known_stock,
     update_inventory_state,
+    batch_update_inventory_state,
     record_sale,
     get_daily_sales_summary,
     parse_sale_query_ist,
@@ -171,7 +172,7 @@ def run_tracker(config, bot_token, chat_id):
                         else:
                             send_telegram_message(bot_token, chat_id, caption)
                 
-                update_inventory_state(domain, item)
+            batch_update_inventory_state(domain, current_inventory)
         except Exception as e:
             print(f"Error scanning domain {domain}: {e}")
 
